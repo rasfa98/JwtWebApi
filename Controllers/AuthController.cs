@@ -3,6 +3,8 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using JwtWebApi.Dtos;
 using JwtWebApi.Models;
+using JwtWebApi.Services.UserService;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 
@@ -14,10 +16,20 @@ namespace JwtWebApi.Controllers
     {
         public static User user = new User();
         private readonly IConfiguration _configuration;
+        private readonly IUserService _userService;
 
-        public AuthController(IConfiguration configuration)
+        public AuthController(IConfiguration configuration, IUserService userService)
         {
             _configuration = configuration;
+            _userService = userService;
+        }
+
+        [HttpGet, Authorize]
+        public ActionResult<string> GetMe()
+        {
+            var username = _userService.GetMyName();
+
+            return Ok(username);
         }
 
         [HttpPost("register")]
