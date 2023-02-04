@@ -1,6 +1,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
+using Dapper;
 using JwtWebApi.Dtos;
 using JwtWebApi.models;
 using JwtWebApi.Models;
@@ -8,6 +9,7 @@ using JwtWebApi.Services.UserService;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
+using MySqlConnector;
 
 namespace JwtWebApi.Controllers
 {
@@ -36,11 +38,17 @@ namespace JwtWebApi.Controllers
         [HttpPost("register")]
         public async Task<ActionResult<User>> Register(UserDto request)
         {
-            CreatePasswordHash(request.Password, out byte[] passwordHash, out byte[] passwordSalt);
+            string passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
 
-            user.Username = request.Username;
-            user.PasswordHash = passwordHash;
-            user.PasswordSalt = passwordSalt;
+            var user = new User
+            {
+                Username = request.Username,
+                PasswordHash = passwordHash
+            };
+
+            using var connection = new MySqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+
+            await connection.ExecuteAsync("INSERT INTO users (username, password) VALUES (@Username, @PasswordHash)", user);
 
             return Ok(user);
         }
@@ -48,12 +56,16 @@ namespace JwtWebApi.Controllers
         [HttpPost("login")]
         public async Task<ActionResult<string>> Login(UserDto request)
         {
-            if (user.Username != request.Username)
+            using var connection = new MySqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+
+            var user = await connection.QueryFirstOrDefaultAsync<User>("SELECT * FROM users WHERE username = @Username", request);
+
+            if (user == null)
             {
                 return BadRequest("User not found.");
             }
 
-            if (!VerifyPasswordHash(request.Password, user.PasswordHash, user.PasswordSalt))
+            if (!BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
             {
                 return BadRequest("Wrong password.");
             }
@@ -136,24 +148,6 @@ namespace JwtWebApi.Controllers
             var jwt = new JwtSecurityTokenHandler().WriteToken(token);
 
             return jwt;
-        }
-
-        private void CreatePasswordHash(string password, out byte[] passwordHash, out byte[] passwordSalt)
-        {
-            using (var hmac = new HMACSHA512())
-            {
-                passwordSalt = hmac.Key;
-                passwordHash = hmac.ComputeHash(System.Text.Encoding.UTF8.GetBytes(password));
-            }
-        }
-
-        private bool VerifyPasswordHash(string password, byte[] passwordHash, byte[] passwordSalt)
-        {
-            using (var hmac = new HMACSHA512(passwordSalt))
-            {
-                var computeHash = hmac.ComputeHash(System.Text.Encoding.UTF8.GetBytes(password));
-                return computeHash.SequenceEqual(passwordHash);
-            }
         }
     }
 }
