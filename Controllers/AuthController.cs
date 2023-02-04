@@ -17,7 +17,6 @@ namespace JwtWebApi.Controllers
     [ApiController]
     public class AuthController : ControllerBase
     {
-        public static User user = new User();
         private readonly IConfiguration _configuration;
         private readonly IUserService _userService;
 
@@ -48,7 +47,7 @@ namespace JwtWebApi.Controllers
 
             using var connection = new MySqlConnection(_configuration.GetConnectionString("DefaultConnection"));
 
-            await connection.ExecuteAsync("INSERT INTO users (username, password) VALUES (@Username, @PasswordHash)", user);
+            await connection.ExecuteAsync("INSERT INTO users (username, passwordHash) VALUES (@Username, @PasswordHash)", user);
 
             return Ok(user);
         }
@@ -73,32 +72,32 @@ namespace JwtWebApi.Controllers
             string token = CreateToken(user);
 
             var refreshToken = GenerateRefreshToken();
-            SetRefreshToken(refreshToken);
+            SetRefreshToken(refreshToken, user.Id);
 
             return Ok(token);
         }
 
-        [HttpPost("refresh-token")]
-        public async Task<ActionResult<string>> RefreshToken()
-        {
-            var refreshToken = Request.Cookies["refreshToken"];
+        // [HttpPost("refresh-token")]
+        // public async Task<ActionResult<string>> RefreshToken()
+        // {
+        //     var refreshToken = Request.Cookies["refreshToken"];
 
-            if (!user.RefreshToken.Equals(refreshToken))
-            {
-                return Unauthorized("Invalid refresh token.");
-            }
+        //     if (!user.RefreshToken.Equals(refreshToken))
+        //     {
+        //         return Unauthorized("Invalid refresh token.");
+        //     }
 
-            if (user.TokenExpires < DateTime.Now)
-            {
-                return Unauthorized("Token expired.");
-            }
+        //     if (user.TokenExpires < DateTime.Now)
+        //     {
+        //         return Unauthorized("Token expired.");
+        //     }
 
-            string token = CreateToken(user);
-            var newRefreshToken = GenerateRefreshToken();
-            SetRefreshToken(newRefreshToken);
+        //     string token = CreateToken(user);
+        //     var newRefreshToken = GenerateRefreshToken();
+        //     SetRefreshToken(newRefreshToken, user.Id);
 
-            return Ok(token);
-        }
+        //     return Ok(token);
+        // }
 
         private RefreshToken GenerateRefreshToken()
         {
@@ -112,7 +111,7 @@ namespace JwtWebApi.Controllers
             return refreshToken;
         }
 
-        private void SetRefreshToken(RefreshToken newRefreshToken)
+        private async void SetRefreshToken(RefreshToken newRefreshToken, int userId)
         {
             var cookieOptions = new CookieOptions
             {
@@ -122,9 +121,9 @@ namespace JwtWebApi.Controllers
 
             Response.Cookies.Append("refreshToken", newRefreshToken.Token, cookieOptions);
 
-            user.RefreshToken = newRefreshToken.Token;
-            user.TokenCreated = newRefreshToken.Created;
-            user.TokenExpires = newRefreshToken.Expires;
+            using var connection = new MySqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+
+            await connection.ExecuteAsync("UPDATE users SET refreshToken = @Token, tokenCreated = @Created, tokenExpires = @Expires WHERE id = @Id", new { Token = newRefreshToken.Token, Created = newRefreshToken.Created, Expires = newRefreshToken.Expires, Id = userId });
         }
 
         private string CreateToken(User user)
