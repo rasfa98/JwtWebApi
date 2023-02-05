@@ -42,7 +42,8 @@ namespace JwtWebApi.Controllers
             var user = new
             {
                 Username = request.Username,
-                PasswordHash = passwordHash
+                PasswordHash = passwordHash,
+                VerificationToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64)),
             };
 
             using var connection = new MySqlConnection(_configuration.GetConnectionString("DefaultConnection"));
@@ -54,7 +55,7 @@ namespace JwtWebApi.Controllers
                 return Conflict("User already exists.");
             }
 
-            await connection.ExecuteAsync("INSERT INTO users (username, passwordHash) VALUES (@Username, @PasswordHash)", user);
+            await connection.ExecuteAsync("INSERT INTO users (username, passwordHash, verificationToken) VALUES (@Username, @PasswordHash, @VerificationToken)", user);
 
             return Ok("User created.");
         }
@@ -69,6 +70,11 @@ namespace JwtWebApi.Controllers
             if (user == null)
             {
                 return BadRequest("User not found.");
+            }
+
+            if (user.VerifiedAt == default(DateTime))
+            {
+                return Unauthorized("User not verified.");
             }
 
             if (!BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
@@ -95,7 +101,7 @@ namespace JwtWebApi.Controllers
 
             if (user == null || (user.RefreshToken != refreshToken))
             {
-                return Unauthorized("Invalid refresh token.");
+                return BadRequest("Invalid refresh token.");
             }
 
             if (user.TokenExpires < DateTime.Now)
@@ -120,6 +126,23 @@ namespace JwtWebApi.Controllers
             };
 
             return refreshToken;
+        }
+
+        [HttpPost("verify")]
+        public async Task<ActionResult<string>> Verify(string token)
+        {
+            using var connection = new MySqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+
+            var user = await connection.QueryFirstOrDefaultAsync<User>("SELECT * FROM users WHERE verificationToken = @Token", new { Token = token });
+
+            if (user == null)
+            {
+                return BadRequest("Invalid token.");
+            }
+
+            await connection.ExecuteAsync("UPDATE users SET verifiedAt = @VerifiedAt WHERE id = @Id", new { VerifiedAt = DateTime.Now, Id = user.Id });
+
+            return Ok("User verified.");
         }
 
         private async void SetRefreshToken(RefreshToken newRefreshToken, int userId)
