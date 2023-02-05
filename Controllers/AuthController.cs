@@ -35,11 +35,11 @@ namespace JwtWebApi.Controllers
         }
 
         [HttpPost("register")]
-        public async Task<ActionResult<User>> Register(UserDto request)
+        public async Task<ActionResult<string>> Register(RegisterDto request)
         {
             string passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
 
-            var user = new User
+            var user = new
             {
                 Username = request.Username,
                 PasswordHash = passwordHash
@@ -47,13 +47,20 @@ namespace JwtWebApi.Controllers
 
             using var connection = new MySqlConnection(_configuration.GetConnectionString("DefaultConnection"));
 
+            var existingUser = await connection.QueryFirstOrDefaultAsync("SELECT * FROM users WHERE username = @Username", user);
+
+            if (existingUser != null)
+            {
+                return Conflict("User already exists.");
+            }
+
             await connection.ExecuteAsync("INSERT INTO users (username, passwordHash) VALUES (@Username, @PasswordHash)", user);
 
-            return Ok(user);
+            return Ok("User created.");
         }
 
         [HttpPost("login")]
-        public async Task<ActionResult<string>> Login(UserDto request)
+        public async Task<ActionResult<string>> Login(LoginDto request)
         {
             using var connection = new MySqlConnection(_configuration.GetConnectionString("DefaultConnection"));
 
