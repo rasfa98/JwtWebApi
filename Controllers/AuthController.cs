@@ -145,6 +145,42 @@ namespace JwtWebApi.Controllers
             return Ok("User verified.");
         }
 
+        [HttpPost("forgot-password")]
+        public async Task<ActionResult<string>> ForgotPassword(string username)
+        {
+            using var connection = new MySqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+
+            var user = await connection.QueryFirstOrDefaultAsync<User>("SELECT * FROM users WHERE username = @Username", new { Username = username });
+
+            if (user == null)
+            {
+                return BadRequest("User not found.");
+            }
+
+            await connection.ExecuteAsync("UPDATE users SET passwordResetToken = @PasswordResetToken, resetTokenExpires = @ResetTokenExpires WHERE id = @Id", new { ResetTokenExpires = DateTime.Now.AddDays(1), PasswordResetToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64)), Id = user.Id });
+
+            return Ok("You may now reset your password.");
+        }
+
+        [HttpPost("reset-password")]
+        public async Task<ActionResult<string>> ResetPassword(ResetPasswordDto request)
+        {
+            using var connection = new MySqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+
+            var user = await connection.QueryFirstOrDefaultAsync<User>("SELECT * FROM users WHERE passwordResetToken = @PasswordResetToken", new { PasswordResetToken = request.Token });
+
+            if (user == null || user.ResetTokenExpires < DateTime.Now)
+            {
+                return BadRequest("Invalid token.");
+            }
+
+            string passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
+
+            await connection.ExecuteAsync("UPDATE users SET passwordResetToken = @PasswordResetToken, resetTokenExpires = @ResetTokenExpires, passwordHash = @PasswordHash WHERE id = @Id", new { ResetTokenExpires = (string?)null, PasswordResetToken = (string?)null, PasswordHash = passwordHash, Id = user.Id });
+
+            return Ok("Password has been reset.");
+        }
+
         private async void SetRefreshToken(RefreshToken newRefreshToken, int userId)
         {
             var cookieOptions = new CookieOptions

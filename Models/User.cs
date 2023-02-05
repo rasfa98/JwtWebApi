@@ -10,5 +10,7 @@ namespace JwtWebApi.Models
         public DateTime TokenExpires { get; set; }
         public string VerificationToken { get; set; } = string.Empty;
         public DateTime VerifiedAt { get; set; }
+        public string PasswordResetToken { get; set; } = string.Empty;
+        public DateTime ResetTokenExpires { get; set; }
     }
 }
