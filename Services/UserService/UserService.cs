@@ -11,7 +11,7 @@ namespace JwtWebApi.Services.UserService
             _httpContextAccessor = httpContextAccessor;
         }
 
-        public string GetMyName()
+        public string GetUsername()
         {
             var result = string.Empty;
 

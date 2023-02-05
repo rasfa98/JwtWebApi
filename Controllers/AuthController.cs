@@ -13,7 +13,7 @@ using MySqlConnector;
 
 namespace JwtWebApi.Controllers
 {
-    [Route("api/[controller]")]
+    [Route("api/auth")]
     [ApiController]
     public class AuthController : ControllerBase
     {
@@ -29,7 +29,7 @@ namespace JwtWebApi.Controllers
         [HttpGet, Authorize]
         public ActionResult<string> GetMe()
         {
-            var username = _userService.GetMyName();
+            var username = _userService.GetUsername();
 
             return Ok(username);
         }
@@ -77,27 +77,31 @@ namespace JwtWebApi.Controllers
             return Ok(token);
         }
 
-        // [HttpPost("refresh-token")]
-        // public async Task<ActionResult<string>> RefreshToken()
-        // {
-        //     var refreshToken = Request.Cookies["refreshToken"];
+        [HttpPost("refresh-token")]
+        public async Task<ActionResult<string>> RefreshToken()
+        {
+            var refreshToken = Request.Cookies["refreshToken"];
 
-        //     if (!user.RefreshToken.Equals(refreshToken))
-        //     {
-        //         return Unauthorized("Invalid refresh token.");
-        //     }
+            using var connection = new MySqlConnection(_configuration.GetConnectionString("DefaultConnection"));
 
-        //     if (user.TokenExpires < DateTime.Now)
-        //     {
-        //         return Unauthorized("Token expired.");
-        //     }
+            var user = await connection.QueryFirstOrDefaultAsync<User>("SELECT * FROM users WHERE refreshToken = @RefreshToken", new { RefreshToken = refreshToken });
 
-        //     string token = CreateToken(user);
-        //     var newRefreshToken = GenerateRefreshToken();
-        //     SetRefreshToken(newRefreshToken, user.Id);
+            if (user == null || (user.RefreshToken != refreshToken))
+            {
+                return Unauthorized("Invalid refresh token.");
+            }
 
-        //     return Ok(token);
-        // }
+            if (user.TokenExpires < DateTime.Now)
+            {
+                return Unauthorized("Token expired.");
+            }
+
+            string token = CreateToken(user);
+            var newRefreshToken = GenerateRefreshToken();
+            SetRefreshToken(newRefreshToken, user.Id);
+
+            return Ok(token);
+        }
 
         private RefreshToken GenerateRefreshToken()
         {
@@ -131,7 +135,6 @@ namespace JwtWebApi.Controllers
             List<Claim> claims = new List<Claim>
             {
                 new Claim(ClaimTypes.Name, user.Username),
-                new Claim(ClaimTypes.Role, "Admin")
             };
 
             var key = new SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(_configuration.GetSection("AppSettings:Token").Value));
