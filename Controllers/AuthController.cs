@@ -5,10 +5,15 @@ using Dapper;
 using JwtWebApi.Dtos;
 using JwtWebApi.models;
 using JwtWebApi.Models;
+using JwtWebApi.Services.EmailService;
 using JwtWebApi.Services.UserService;
+using MailKit.Net.Smtp;
+using MailKit.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
+using MimeKit;
+using MimeKit.Text;
 using MySqlConnector;
 
 namespace JwtWebApi.Controllers
@@ -18,12 +23,14 @@ namespace JwtWebApi.Controllers
     public class AuthController : ControllerBase
     {
         private readonly IConfiguration _configuration;
+        private readonly IEmailService _emailService;
         private readonly IUserService _userService;
 
-        public AuthController(IConfiguration configuration, IUserService userService)
+        public AuthController(IConfiguration configuration, IUserService userService, IEmailService emailService)
         {
             _configuration = configuration;
             _userService = userService;
+            _emailService = emailService;
         }
 
         [HttpGet, Authorize]
@@ -56,6 +63,8 @@ namespace JwtWebApi.Controllers
             }
 
             await connection.ExecuteAsync("INSERT INTO users (username, passwordHash, verificationToken) VALUES (@Username, @PasswordHash, @VerificationToken)", user);
+
+            _emailService.SendEmail(new EmailDto { To = "isobel.oberbrunner25@ethereal.email", Subject = "Verify account", Body = $"Verify account using token {user.VerificationToken}" });
 
             return Ok("User created.");
         }
@@ -157,7 +166,11 @@ namespace JwtWebApi.Controllers
                 return BadRequest("User not found.");
             }
 
-            await connection.ExecuteAsync("UPDATE users SET passwordResetToken = @PasswordResetToken, resetTokenExpires = @ResetTokenExpires WHERE id = @Id", new { ResetTokenExpires = DateTime.Now.AddDays(1), PasswordResetToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64)), Id = user.Id });
+            string token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
+
+            await connection.ExecuteAsync("UPDATE users SET passwordResetToken = @PasswordResetToken, resetTokenExpires = @ResetTokenExpires WHERE id = @Id", new { ResetTokenExpires = DateTime.Now.AddDays(1), PasswordResetToken = token, Id = user.Id });
+
+            _emailService.SendEmail(new EmailDto { To = "isobel.oberbrunner25@ethereal.email", Subject = "Reset password", Body = $"Reset password using token {token}" });
 
             return Ok("You may now reset your password.");
         }
