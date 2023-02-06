@@ -7,13 +7,9 @@ using JwtWebApi.models;
 using JwtWebApi.Models;
 using JwtWebApi.Services.EmailService;
 using JwtWebApi.Services.UserService;
-using MailKit.Net.Smtp;
-using MailKit.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
-using MimeKit;
-using MimeKit.Text;
 using MySqlConnector;
 
 namespace JwtWebApi.Controllers
@@ -34,7 +30,7 @@ namespace JwtWebApi.Controllers
         }
 
         [HttpGet, Authorize]
-        public ActionResult<string> GetMe()
+        public ActionResult<string> Auth()
         {
             var username = _userService.GetUsername();
 
@@ -44,18 +40,19 @@ namespace JwtWebApi.Controllers
         [HttpPost("register")]
         public async Task<ActionResult<string>> Register(RegisterDto request)
         {
-            string passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
+            string passwordHash = CreatePasswordHash(request.Password);
+            string token = CreateToken();
 
-            var user = new
+            var user = new User
             {
                 Username = request.Username,
                 PasswordHash = passwordHash,
-                VerificationToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64)),
+                VerificationToken = token,
             };
 
             using var connection = new MySqlConnection(_configuration.GetConnectionString("DefaultConnection"));
 
-            var existingUser = await connection.QueryFirstOrDefaultAsync("SELECT * FROM users WHERE username = @Username", user);
+            var existingUser = await connection.QueryFirstOrDefaultAsync<User>("SELECT * FROM users WHERE username = @Username", user);
 
             if (existingUser != null)
             {
@@ -86,14 +83,14 @@ namespace JwtWebApi.Controllers
                 return Unauthorized("User not verified.");
             }
 
-            if (!BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
+            if (!VerifyPasswordHash(request.Password, user.PasswordHash))
             {
                 return BadRequest("Wrong password.");
             }
 
-            string token = CreateToken(user);
-
+            string token = CreateJwtToken(user);
             var refreshToken = GenerateRefreshToken();
+
             SetRefreshToken(refreshToken, user.Id);
 
             return Ok(token);
@@ -118,8 +115,9 @@ namespace JwtWebApi.Controllers
                 return Unauthorized("Token expired.");
             }
 
-            string token = CreateToken(user);
+            string token = CreateJwtToken(user);
             var newRefreshToken = GenerateRefreshToken();
+
             SetRefreshToken(newRefreshToken, user.Id);
 
             return Ok(token);
@@ -129,7 +127,7 @@ namespace JwtWebApi.Controllers
         {
             var refreshToken = new RefreshToken
             {
-                Token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64)),
+                Token = CreateToken(),
                 Expires = DateTime.Now.AddDays(7),
                 Created = DateTime.Now
             };
@@ -166,7 +164,7 @@ namespace JwtWebApi.Controllers
                 return BadRequest("User not found.");
             }
 
-            string token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
+            string token = CreateToken();
 
             await connection.ExecuteAsync("UPDATE users SET passwordResetToken = @PasswordResetToken, resetTokenExpires = @ResetTokenExpires WHERE id = @Id", new { ResetTokenExpires = DateTime.Now.AddDays(1), PasswordResetToken = token, Id = user.Id });
 
@@ -194,6 +192,11 @@ namespace JwtWebApi.Controllers
             return Ok("Password has been reset.");
         }
 
+        private string CreateToken()
+        {
+            return Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
+        }
+
         private async void SetRefreshToken(RefreshToken newRefreshToken, int userId)
         {
             var cookieOptions = new CookieOptions
@@ -209,7 +212,17 @@ namespace JwtWebApi.Controllers
             await connection.ExecuteAsync("UPDATE users SET refreshToken = @Token, tokenCreated = @Created, tokenExpires = @Expires WHERE id = @Id", new { Token = newRefreshToken.Token, Created = newRefreshToken.Created, Expires = newRefreshToken.Expires, Id = userId });
         }
 
-        private string CreateToken(User user)
+        private string CreatePasswordHash(string password)
+        {
+            return BCrypt.Net.BCrypt.HashPassword(password);
+        }
+
+        private bool VerifyPasswordHash(string password, string passwordHash)
+        {
+            return BCrypt.Net.BCrypt.Verify(password, passwordHash);
+        }
+
+        private string CreateJwtToken(User user)
         {
             List<Claim> claims = new List<Claim>
             {
