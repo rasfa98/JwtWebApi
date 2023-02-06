@@ -30,7 +30,7 @@ namespace JwtWebApi.Controllers
         }
 
         [HttpGet, Authorize]
-        public ActionResult<string> Auth()
+        public ActionResult<string> GetMe()
         {
             var email = _userService.GetEmail();
 
@@ -228,6 +228,11 @@ namespace JwtWebApi.Controllers
             {
                 new Claim(ClaimTypes.Email, user.Email),
             };
+
+            if (user.IsAdmin)
+            {
+                claims.Add(new Claim(ClaimTypes.Role, "Admin"));
+            }
 
             var key = new SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(_configuration.GetSection("AppSettings:Token").Value));
 
