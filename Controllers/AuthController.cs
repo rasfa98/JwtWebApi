@@ -32,9 +32,9 @@ namespace JwtWebApi.Controllers
         [HttpGet, Authorize]
         public ActionResult<string> Auth()
         {
-            var username = _userService.GetUsername();
+            var email = _userService.GetEmail();
 
-            return Ok(username);
+            return Ok(email);
         }
 
         [HttpPost("register")]
@@ -45,23 +45,23 @@ namespace JwtWebApi.Controllers
 
             var user = new User
             {
-                Username = request.Username,
+                Email = request.Email,
                 PasswordHash = passwordHash,
                 VerificationToken = token,
             };
 
             using var connection = new MySqlConnection(_configuration.GetConnectionString("DefaultConnection"));
 
-            var existingUser = await connection.QueryFirstOrDefaultAsync<User>("SELECT * FROM users WHERE username = @Username", user);
+            var existingUser = await connection.QueryFirstOrDefaultAsync<User>("SELECT * FROM users WHERE email = @Email", user);
 
             if (existingUser != null)
             {
-                return Conflict("User already exists.");
+                return Conflict("Email already exists.");
             }
 
-            await connection.ExecuteAsync("INSERT INTO users (username, passwordHash, verificationToken) VALUES (@Username, @PasswordHash, @VerificationToken)", user);
+            await connection.ExecuteAsync("INSERT INTO users (email, passwordHash, verificationToken) VALUES (@Email, @PasswordHash, @VerificationToken)", user);
 
-            _emailService.SendEmail(new EmailDto { To = "isobel.oberbrunner25@ethereal.email", Subject = "Verify account", Body = $"Verify account using token {user.VerificationToken}" });
+            _emailService.SendEmail(new EmailDto { To = user.Email, Subject = "Verify account", Body = $"Verify account using token {user.VerificationToken}" });
 
             return Ok("User created.");
         }
@@ -71,7 +71,7 @@ namespace JwtWebApi.Controllers
         {
             using var connection = new MySqlConnection(_configuration.GetConnectionString("DefaultConnection"));
 
-            var user = await connection.QueryFirstOrDefaultAsync<User>("SELECT * FROM users WHERE username = @Username", request);
+            var user = await connection.QueryFirstOrDefaultAsync<User>("SELECT * FROM users WHERE email = @Email", request);
 
             if (user == null)
             {
@@ -153,11 +153,11 @@ namespace JwtWebApi.Controllers
         }
 
         [HttpPost("forgot-password")]
-        public async Task<ActionResult<string>> ForgotPassword(string username)
+        public async Task<ActionResult<string>> ForgotPassword(string email)
         {
             using var connection = new MySqlConnection(_configuration.GetConnectionString("DefaultConnection"));
 
-            var user = await connection.QueryFirstOrDefaultAsync<User>("SELECT * FROM users WHERE username = @Username", new { Username = username });
+            var user = await connection.QueryFirstOrDefaultAsync<User>("SELECT * FROM users WHERE email = @Email", new { Email = email });
 
             if (user == null)
             {
@@ -168,7 +168,7 @@ namespace JwtWebApi.Controllers
 
             await connection.ExecuteAsync("UPDATE users SET passwordResetToken = @PasswordResetToken, resetTokenExpires = @ResetTokenExpires WHERE id = @Id", new { ResetTokenExpires = DateTime.Now.AddDays(1), PasswordResetToken = token, Id = user.Id });
 
-            _emailService.SendEmail(new EmailDto { To = "isobel.oberbrunner25@ethereal.email", Subject = "Reset password", Body = $"Reset password using token {token}" });
+            _emailService.SendEmail(new EmailDto { To = user.Email, Subject = "Reset password", Body = $"Reset password using token {token}" });
 
             return Ok("You may now reset your password.");
         }
@@ -226,7 +226,7 @@ namespace JwtWebApi.Controllers
         {
             List<Claim> claims = new List<Claim>
             {
-                new Claim(ClaimTypes.Name, user.Username),
+                new Claim(ClaimTypes.Email, user.Email),
             };
 
             var key = new SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(_configuration.GetSection("AppSettings:Token").Value));

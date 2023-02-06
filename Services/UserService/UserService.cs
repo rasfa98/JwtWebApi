@@ -11,13 +11,13 @@ namespace JwtWebApi.Services.UserService
             _httpContextAccessor = httpContextAccessor;
         }
 
-        public string GetUsername()
+        public string GetEmail()
         {
             var result = string.Empty;
 
             if (_httpContextAccessor != null)
             {
-                result = _httpContextAccessor.HttpContext.User.FindFirstValue(ClaimTypes.Name);
+                result = _httpContextAccessor.HttpContext.User.FindFirstValue(ClaimTypes.Email);
             }
 
             return result;
