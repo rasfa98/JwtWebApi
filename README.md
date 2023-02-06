@@ -24,3 +24,4 @@ A lot of things can be done, feel free to open a pull request :)
 - Use DTO's for all endpoints
 - Add tests
 - Refactor
+- Add more models
