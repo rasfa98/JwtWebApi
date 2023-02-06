@@ -25,3 +25,4 @@ A lot of things can be done, feel free to open a pull request :)
 - Add tests
 - Refactor
 - Add more models
+- Add Dockerfile
