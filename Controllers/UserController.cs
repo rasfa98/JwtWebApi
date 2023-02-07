@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Dapper;
 using JwtWebApi.Dtos;
 using JwtWebApi.Models;
@@ -71,19 +72,28 @@ namespace JwtWebApi.Controllers
             {
                 Id = id,
                 Email = request.Email,
-                IsAdmin = request.IsAdmin
+                IsAdmin = request.IsAdmin,
             };
 
             using var connection = new MySqlConnection(_configuration.GetConnectionString("DefaultConnection"));
 
-            var existingUser = await connection.QueryFirstOrDefaultAsync<User>("SELECT * FROM users WHERE email = @Email AND id != @Id", user);
+            var existingUser = await connection.QueryFirstOrDefaultAsync<User>("SELECT * FROM users WHERE email = @Email", user);
 
-            if (existingUser != null)
+            if (existingUser != null && existingUser.Id != id)
             {
                 return Conflict("Email already exists.");
             }
 
             await connection.ExecuteAsync("UPDATE users SET email = @Email, isAdmin = @IsAdmin WHERE id = @Id", user);
+
+            if (request.Email != existingUser?.Email)
+            {
+                var verificationToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
+
+                await connection.ExecuteAsync("UPDATE users SET VerificationToken = @VerificationToken, VerifiedAt = @VerifiedAt WHERE id = @Id", new { Id = id, VerificationToken = verificationToken, VerifiedAt = (DateTime?)null });
+
+                _emailService.SendEmail(new EmailDto { To = user.Email, Subject = "Verify account", Body = $"Verify account using token {verificationToken}" });
+            }
 
             return NoContent();
         }
