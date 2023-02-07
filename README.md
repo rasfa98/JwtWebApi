@@ -16,13 +16,11 @@ Web API built with .NET 7 trying to use common best practices.
 - Forgot/Reset password
 - Verify user
 - Email support
+- Admin endpoints for managing users
 
 ## TODO
 
 A lot of things can be done, feel free to open a pull request :)
 
-- Use DTO's for all endpoints
 - Add tests
-- Refactor
-- Add more models
 - Add Dockerfile
