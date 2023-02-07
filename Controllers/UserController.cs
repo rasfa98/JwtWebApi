@@ -1,5 +1,7 @@
 using Dapper;
 using JwtWebApi.Dtos;
+using JwtWebApi.Models;
+using JwtWebApi.Services.EmailService;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MySqlConnector;
@@ -12,10 +14,12 @@ namespace JwtWebApi.Controllers
     public class UserController : ControllerBase
     {
         private readonly IConfiguration _configuration;
-        public UserController(IConfiguration configuration)
+        private readonly IEmailService _emailService;
+
+        public UserController(IConfiguration configuration, IEmailService emailService)
         {
             _configuration = configuration;
-
+            _emailService = emailService;
         }
 
         [HttpGet]
@@ -56,6 +60,30 @@ namespace JwtWebApi.Controllers
             }
 
             await connection.ExecuteAsync("DELETE FROM users WHERE id = @Id", new { Id = id });
+
+            return NoContent();
+        }
+
+        [HttpPut("{id}")]
+        public async Task<ActionResult> UpdateUser(int id, UpdateUserDto request)
+        {
+            var user = new User
+            {
+                Id = id,
+                Email = request.Email,
+                IsAdmin = request.IsAdmin
+            };
+
+            using var connection = new MySqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+
+            var existingUser = await connection.QueryFirstOrDefaultAsync<User>("SELECT * FROM users WHERE email = @Email AND id != @Id", user);
+
+            if (existingUser != null)
+            {
+                return Conflict("Email already exists.");
+            }
+
+            await connection.ExecuteAsync("UPDATE users SET email = @Email, isAdmin = @IsAdmin WHERE id = @Id", user);
 
             return NoContent();
         }
